@@ -13,8 +13,6 @@
     text-align: center;
   }
 
-  h1 { margin-top: 20px; }
-
   #menu {
     margin-top: 40px;
   }
@@ -52,30 +50,23 @@
 
 <h1>NK DASH</h1>
 
-<!-- CHARACTER MENU -->
+<!-- CHARACTER SELECT -->
 <div id="menu">
   <h2>Select Your Character</h2>
 
-  <div>
-    <img class="char" src="chars/char1.png" onclick="selectChar(0)">
-    <img class="char" src="chars/char2.png" onclick="selectChar(1)">
-    <img class="char" src="chars/char3.png" onclick="selectChar(2)">
-    <img class="char" src="chars/char4.png" onclick="selectChar(3)">
-    <img class="char" src="chars/char5.png" onclick="selectChar(4)">
-    <img class="char" src="chars/char6.png" onclick="selectChar(5)">
-  </div>
+  <div id="charBox"></div>
 
-  <button id="startBtn" onclick="startGame()">START</button>
+  <button id="startBtn">START</button>
 </div>
 
-<!-- GAME CANVAS -->
-<canvas id="game" width="600" height="200"></canvas>
+<canvas id="game" width="700" height="220"></canvas>
 
 <script>
-/* ================= SETUP ================= */
+/* ================= BASIC SETUP ================= */
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 const menu = document.getElementById("menu");
+const charBox = document.getElementById("charBox");
 
 /* ================= CHARACTERS ================= */
 const characters = [
@@ -91,57 +82,59 @@ let selectedChar = Number(localStorage.getItem("nkChar")) || 0;
 let playerImg = new Image();
 playerImg.src = characters[selectedChar];
 
+/* generate character buttons */
+characters.forEach((src, i) => {
+  const img = document.createElement("img");
+  img.src = src;
+  img.className = "char";
+  if (i === selectedChar) img.classList.add("selected");
+  img.onclick = () => selectChar(i);
+  charBox.appendChild(img);
+});
+
+function selectChar(i) {
+  selectedChar = i;
+  localStorage.setItem("nkChar", i);
+  playerImg.src = characters[i];
+  document.querySelectorAll(".char").forEach((c, idx) =>
+    c.classList.toggle("selected", idx === i)
+  );
+}
+
 /* ================= GAME STATE ================= */
 let started = false;
 let gameOver = false;
 
 /* ================= PLAYER ================= */
-let player = {
-  x: 80,
-  y: 130,
-  size: 30,
-  velocity: 0,
-  gravity: 0.6,
-  jump: -10,
+const player = {
+  x: 90,
+  y: 140,
+  size: 32,
+  vel: 0,
+  gravity: 0.65,
+  jump: -11,
   grounded: false,
-  rotation: 0
+  rot: 0
 };
 
 /* ================= GAME VARS ================= */
-let groundY = 160;
+const groundY = 180;
 let speed = 4;
 let obstacles = [];
 let frame = 0;
 let score = 0;
 
-/* ================= CHARACTER SELECT ================= */
-function selectChar(i) {
-  selectedChar = i;
-  localStorage.setItem("nkChar", i);
-  playerImg.src = characters[i];
-
-  document.querySelectorAll(".char").forEach((el, idx) => {
-    el.classList.toggle("selected", idx === i);
-  });
-}
-
-/* ================= START GAME ================= */
-function startGame() {
+/* ================= START ================= */
+document.getElementById("startBtn").onclick = () => {
   menu.style.display = "none";
   canvas.style.display = "block";
-  started = true;
   resetGame();
-  update();
-}
+  started = true;
+  loop();
+};
 
 /* ================= INPUT ================= */
-canvas.addEventListener("mousedown", handleInput);
-canvas.addEventListener("touchstart", handleInput);
-document.addEventListener("keydown", e => {
-  if (e.code === "Space") handleInput();
-});
-
-function handleInput(e) {
+function input(e) {
   if (e) e.preventDefault();
 
   if (gameOver) {
@@ -150,10 +143,16 @@ function handleInput(e) {
   }
 
   if (player.grounded) {
-    player.velocity = player.jump;
+    player.vel = player.jump;
     player.grounded = false;
   }
 }
+
+canvas.addEventListener("mousedown", input);
+canvas.addEventListener("touchstart", input);
+document.addEventListener("keydown", e => {
+  if (e.code === "Space") input();
+});
 
 /* ================= RESET ================= */
 function resetGame() {
@@ -162,94 +161,114 @@ function resetGame() {
   score = 0;
   speed = 4;
   gameOver = false;
-  player.y = 130;
-  player.velocity = 0;
-  player.rotation = 0;
+  player.y = 140;
+  player.vel = 0;
+  player.rot = 0;
 }
 
-/* ================= OBSTACLES ================= */
-function addObstacle() {
-  obstacles.push({ x: canvas.width, width: 30, height: 30 });
+/* ================= RANDOM SPIKES ================= */
+function spawnSpike() {
+  const gap = Math.random() * 200 + 140; // random spacing
+  const height = Math.random() * 30 + 30; // random spike height
+
+  const lastX = obstacles.length
+    ? obstacles[obstacles.length - 1].x
+    : canvas.width;
+
+  obstacles.push({
+    x: lastX + gap,
+    w: 30,
+    h: height
+  });
 }
 
 /* ================= GAME LOOP ================= */
-function update() {
+function loop() {
   if (!started) return;
-
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   if (!gameOver) {
-    score += speed;
+    /* distance-based score */
+    score += speed * 0.1;
 
-    player.velocity += player.gravity;
-    player.y += player.velocity;
+    /* difficulty ramp */
+    if (frame % 600 === 0) speed += 0.4;
 
-    if (!player.grounded) {
-      player.rotation += 0.15;
-    }
+    /* physics */
+    player.vel += player.gravity;
+    player.y += player.vel;
 
+    if (!player.grounded) player.rot += 0.15;
+
+    /* ground */
     if (player.y + player.size >= groundY) {
       player.y = groundY - player.size;
-      player.velocity = 0;
+      player.vel = 0;
       player.grounded = true;
-      player.rotation =
-        Math.round(player.rotation / (Math.PI / 2)) * (Math.PI / 2);
+      player.rot =
+        Math.round(player.rot / (Math.PI / 2)) * (Math.PI / 2);
     }
 
-    if (frame % 120 === 0) addObstacle();
+    /* spawn spikes */
+    if (obstacles.length < 6) spawnSpike();
 
     obstacles.forEach(o => {
       o.x -= speed;
 
-      let padding = 6;
+      /* collision */
+      const pad = 6;
       if (
-        player.x + padding < o.x + o.width &&
-        player.x + player.size - padding > o.x &&
-        player.y + player.size > groundY - o.height
+        player.x + pad < o.x + o.w &&
+        player.x + player.size - pad > o.x &&
+        player.y + player.size > groundY - o.h
       ) {
         gameOver = true;
       }
     });
+
+    /* cleanup */
+    obstacles = obstacles.filter(o => o.x + o.w > 0);
   }
 
-  /* DRAW GROUND */
+  /* ground */
   ctx.fillStyle = "#00ffff";
   ctx.fillRect(0, groundY, canvas.width, 5);
 
-  /* DRAW PLAYER */
+  /* player */
   ctx.save();
-  ctx.translate(player.x + 15, player.y + 15);
-  ctx.rotate(player.rotation);
-  ctx.drawImage(playerImg, -15, -15, 30, 30);
+  ctx.translate(player.x + player.size / 2, player.y + player.size / 2);
+  ctx.rotate(player.rot);
+  ctx.drawImage(playerImg, -16, -16, 32, 32);
   ctx.restore();
 
-  /* DRAW SPIKES */
+  /* spikes */
   ctx.fillStyle = "#ff0055";
   obstacles.forEach(o => {
     ctx.beginPath();
     ctx.moveTo(o.x, groundY);
-    ctx.lineTo(o.x + o.width / 2, groundY - o.height);
-    ctx.lineTo(o.x + o.width, groundY);
+    ctx.lineTo(o.x + o.w / 2, groundY - o.h);
+    ctx.lineTo(o.x + o.w, groundY);
     ctx.closePath();
     ctx.fill();
   });
 
   /* UI */
   ctx.fillStyle = "white";
-  ctx.fillText("Score: " + Math.floor(score), 10, 20);
+  ctx.font = "16px Arial";
+  ctx.fillText("Distance: " + Math.floor(score), 10, 22);
 
   if (gameOver) {
     ctx.fillStyle = "rgba(0,0,0,0.6)";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = "white";
-    ctx.font = "20px Arial";
-    ctx.fillText("GAME OVER", 240, 90);
+    ctx.font = "22px Arial";
+    ctx.fillText("GAME OVER", canvas.width / 2 - 70, 95);
     ctx.font = "14px Arial";
-    ctx.fillText("Tap / Space to Restart", 205, 120);
+    ctx.fillText("Tap / Space to Restart", canvas.width / 2 - 85, 125);
   }
 
   frame++;
-  requestAnimationFrame(update);
+  requestAnimationFrame(loop);
 }
 </script>
 
